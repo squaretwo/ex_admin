@@ -79,11 +79,20 @@ defmodule ExAdmin.Filter do
   end
   def field_label(field, _defn), do: humanize(field)
 
-  def associations(defn) do
+  def associations(%{index_filters: filters} = defn) do
+    filters = case filters do
+      [list] -> list
+      _ -> []
+    end
+    except_filters = filters[:except] || []
     Enum.reduce defn.resource_model.__schema__(:associations), [], fn(assoc, acc) ->
-      case defn.resource_model.__schema__(:association, assoc) do
-        %Ecto.Association.BelongsTo{} = belongs_to -> [{assoc, belongs_to} | acc]
-        _ -> acc
+      if(Enum.any?(except_filters, &(&1 == assoc))) do
+        acc
+      else
+        case defn.resource_model.__schema__(:association, assoc) do
+          %Ecto.Association.BelongsTo{} = belongs_to -> [{assoc, belongs_to} | acc]
+          _ -> acc
+        end
       end
     end
   end

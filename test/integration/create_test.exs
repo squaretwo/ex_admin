@@ -11,18 +11,19 @@ defmodule TestExAdmin.CreateTest do
   end
 
   @tag :integration
-  test "create a product", %{ user: user } do
-    navigate_to admin_resource_path(Product, :new)
+  test "create a product", %{user: user} do
+    navigate_to(admin_resource_path(Product, :new))
 
     title_field = find_element(:name, "product[title]")
     price_field = find_element(:name, "product[price]")
     _user_field = find_element(:name, "product[user_id]")
 
-    fill_field title_field, "Test Create"
-    fill_field price_field, ".99"
+    fill_field(title_field, "Test Create")
+    fill_field(price_field, ".99")
+
     find_element(:css, "select[name*='product[user_id]']")
     |> find_all_within_element(:css, "option")
-    |> Enum.find(fn(x) -> attribute_value(x, "value") == "#{user.id}" end)
+    |> Enum.find(fn x -> attribute_value(x, "value") == "#{user.id}" end)
     |> click
 
     click(find_element(:name, "commit"))
@@ -34,7 +35,7 @@ defmodule TestExAdmin.CreateTest do
 
   @tag :integration
   test "validate product creation" do
-    navigate_to admin_resource_path(Product, :new)
+    navigate_to(admin_resource_path(Product, :new))
     click(find_element(:name, "commit"))
 
     title_wrapper = find_element(:css, "#product_title_input")

@@ -9,26 +9,38 @@ defmodule ExAdmin.FilterTest do
     defn = %TestExAdmin.ExAdmin.User{}
     assert Filter.fields(defn) == [name: :string, email: :string]
   end
+
   test "filters except" do
     defn = %TestExAdmin.ExAdmin.User{index_filters: [[except: [:name, :email]]]}
     assert Filter.fields(defn) == [active: :boolean]
   end
+
   test "filters all" do
     defn = %TestExAdmin.ExAdmin.User{index_filters: []}
     assert Filter.fields(defn) == [name: :string, email: :string, active: :boolean]
   end
+
   test "filters only" do
     defn = %TestExAdmin.ExAdmin.User{index_filters: [[only: [:name, :active]]]}
     assert Filter.fields(defn) == [name: :string, active: :boolean]
   end
+
   test "filters only field_label" do
-    defn = %TestExAdmin.ExAdmin.User{index_filters: [[only: [:name, :email], labels: [email: "EMail Address"]]]}
+    defn = %TestExAdmin.ExAdmin.User{
+      index_filters: [[only: [:name, :email], labels: [email: "EMail Address"]]]
+    }
+
     assert Filter.fields(defn) == [name: :string, email: :string]
   end
+
   test "filters except field_label" do
-    defn = %TestExAdmin.ExAdmin.User{index_filters: [[except: [:active], labels: [email: "EMail Address"]]]}
+    defn = %TestExAdmin.ExAdmin.User{
+      index_filters: [[except: [:active], labels: [email: "EMail Address"]]]
+    }
+
     assert Filter.fields(defn) == [name: :string, email: :string]
   end
+
   test "filters default field_label" do
     defn = %TestExAdmin.ExAdmin.User{index_filters: [[labels: [email: "EMail Address"]]]}
     assert Filter.fields(defn) == [name: :string, email: :string, active: :boolean]
@@ -47,8 +59,12 @@ defmodule ExAdmin.FilterTest do
     assert Filter.field_label(:name, defn) == "Name"
     assert Filter.field_label(:email, defn) == "Email"
   end
+
   test "filter_label label" do
-    defn = %TestExAdmin.ExAdmin.User{index_filters: [[labels: [email: "EMail Address", name: "Full Name"]]]}
+    defn = %TestExAdmin.ExAdmin.User{
+      index_filters: [[labels: [email: "EMail Address", name: "Full Name"]]]
+    }
+
     assert Filter.field_label(:name, defn) == "Full Name"
     assert Filter.field_label(:email, defn) == "EMail Address"
   end

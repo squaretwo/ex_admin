@@ -14,7 +14,7 @@ defmodule TestExAdmin.UpdateTest do
     noid = insert_noid(user_id: user.id, name: "controller 1")
     _user2 = insert_user()
     current_window_handle() |> maximize_window
-    navigate_to admin_resource_path(Noid, :index)
+    navigate_to(admin_resource_path(Noid, :index))
     click(find_element(:class, "edit_link"))
 
     name_field = find_element(:name, "noid[name]")
@@ -27,9 +27,9 @@ defmodule TestExAdmin.UpdateTest do
     assert attribute_value(company_field, "value") == noid.company
     assert attribute_value(user_field, "value") == "#{noid.user_id}"
 
-    fill_field name_field, "Cory"
-    fill_field description_field, "Updated"
-    fill_field company_field, "This"
+    fill_field(name_field, "Cory")
+    fill_field(description_field, "Updated")
+    fill_field(company_field, "This")
 
     click(find_element(:name, "commit"))
 

@@ -44,7 +44,7 @@ defmodule ExAdmin.Register do
   if File.dir?("/tmp") do
     @filename "/tmp/ex_admin_registered"
   else
-    @filename System.tmp_dir <> "/ex_admin_registered"
+    @filename System.tmp_dir() <> "/ex_admin_registered"
   end
 
   import ExAdmin.Utils
@@ -61,13 +61,13 @@ defmodule ExAdmin.Register do
       import Ecto.Query, only: [from: 2]
       import Xain, except: [input: 1, input: 2, input: 3, menu: 1, form: 2]
       import ExAdmin.ViewHelpers
-      Module.register_attribute __MODULE__, :member_actions, accumulate: true, persist: true
-      Module.register_attribute __MODULE__, :collection_actions, accumulate: true, persist: true
+      Module.register_attribute(__MODULE__, :member_actions, accumulate: true, persist: true)
+      Module.register_attribute(__MODULE__, :collection_actions, accumulate: true, persist: true)
     end
   end
 
-  File.rm @filename
-  File.touch @filename
+  File.rm(@filename)
+  File.touch(@filename)
 
   @doc """
   Register an Ecto model.
@@ -93,7 +93,7 @@ defmodule ExAdmin.Register do
   * Use the 2nd field in the Model's schema
 
   """
-  defmacro register_resource(mod, [do: block]) do
+  defmacro register_resource(mod, do: block) do
     quote location: :keep do
       import ExAdmin.ViewHelpers
       import ExAdmin.Utils
@@ -101,86 +101,120 @@ defmodule ExAdmin.Register do
 
       @all_options [:edit, :show, :new, :delete]
 
-      Module.register_attribute __MODULE__, :query, accumulate: false, persist: true
-      Module.register_attribute __MODULE__, :index_filters, accumulate: true, persist: true
-      Module.register_attribute __MODULE__, :batch_actions, accumulate: true, persist: true
-      Module.register_attribute __MODULE__, :selectable_column, accumulate: false, persist: true
+      Module.register_attribute(__MODULE__, :query, accumulate: false, persist: true)
+      Module.register_attribute(__MODULE__, :index_filters, accumulate: true, persist: true)
+      Module.register_attribute(__MODULE__, :batch_actions, accumulate: true, persist: true)
+      Module.register_attribute(__MODULE__, :selectable_column, accumulate: false, persist: true)
       Module.register_attribute(__MODULE__, :form_items, accumulate: true, persist: true)
       Module.register_attribute(__MODULE__, :controller_plugs, accumulate: true, persist: true)
       Module.register_attribute(__MODULE__, :sidebars, accumulate: true, persist: true)
       Module.register_attribute(__MODULE__, :scopes, accumulate: true, persist: true)
-      Module.register_attribute __MODULE__, :actions, accumulate: true, persist: true
-      Enum.each @all_options, &(Module.put_attribute __MODULE__, :actions, &1)
+      Module.register_attribute(__MODULE__, :actions, accumulate: true, persist: true)
+      Enum.each(@all_options, &Module.put_attribute(__MODULE__, :actions, &1))
       module = unquote(mod)
       Module.put_attribute(__MODULE__, :module, module)
       Module.put_attribute(__MODULE__, :query, nil)
       Module.put_attribute(__MODULE__, :selectable_column, nil)
       Module.put_attribute(__MODULE__, :changesets, [])
 
-      @name_column Module.get_attribute(__MODULE__, :name_column) || apply(ExAdmin.Helpers, :get_name_field, [module])
+      @name_column Module.get_attribute(__MODULE__, :name_column) ||
+                     apply(ExAdmin.Helpers, :get_name_field, [module])
 
       alias unquote(mod)
       import Ecto.Query
 
       def config do
-        apply __MODULE__, :__struct__, []
+        apply(__MODULE__, :__struct__, [])
       end
 
       unquote(block)
 
-      query_opts = case Module.get_attribute(__MODULE__, :query) do
-        nil ->
-          list = module.__schema__(:associations)
-          |> Enum.map(&(ExAdmin.Register.build_query_association module, &1))
-          |> Enum.filter(&(not is_nil(&1)))
-          query = %{all: [preload: list]}
-          Module.put_attribute __MODULE__, :query, query
-          query
-        other -> other
-      end
+      query_opts =
+        case Module.get_attribute(__MODULE__, :query) do
+          nil ->
+            list =
+              module.__schema__(:associations)
+              |> Enum.map(&ExAdmin.Register.build_query_association(module, &1))
+              |> Enum.filter(&(not is_nil(&1)))
 
-      controller = case Module.get_attribute(__MODULE__, :controller) do
-        nil ->
-          controller_mod = String.to_atom("#{module}Controller")
-          Module.put_attribute(__MODULE__, :controller, controller_mod)
-        other ->
-          Logger.warn "Should not get here - controller: #{inspect other}"
-      end
+            query = %{all: [preload: list]}
+            Module.put_attribute(__MODULE__, :query, query)
+            query
 
-      menu_opts = case Module.get_attribute(__MODULE__, :menu) do
-        nil ->
-          %{ priority: 10,
-             label: (base_name(module) |> Inflex.pluralize)}
-        other ->
-          Enum.into other, %{}
-      end
+          other ->
+            other
+        end
 
-      controller_route = (base_name(module) |> Inflex.underscore |> Inflex.pluralize)
-      controller_route = case Module.get_attribute(__MODULE__, :options) do
-        nil -> controller_route
-        options ->
-          Keyword.get(options, :controller_route, controller_route)
-      end
-      plugs = case Module.get_attribute(__MODULE__, :controller_plugs) do
-        nil -> []
-        list -> Enum.reverse list
-      end
-      sidebars = case Module.get_attribute(__MODULE__, :sidebars) do
-        nil -> []
-        list -> Enum.reverse list
-      end
-      scopes = case Module.get_attribute(__MODULE__, :scopes) do
-        nil -> []
-        list -> Enum.reverse list
-      end
-      controller_filters = (Module.get_attribute(__MODULE__, :controller_filters) || [])
-      |> ExAdmin.Helpers.group_reduce_by_reverse
+      controller =
+        case Module.get_attribute(__MODULE__, :controller) do
+          nil ->
+            controller_mod = String.to_atom("#{module}Controller")
+            Module.put_attribute(__MODULE__, :controller, controller_mod)
 
-      action_labels = ExAdmin.Register.get_action_labels(Module.get_attribute(__MODULE__, :actions))
+          other ->
+            Logger.warn("Should not get here - controller: #{inspect(other)}")
+        end
+
+      menu_opts =
+        case Module.get_attribute(__MODULE__, :menu) do
+          nil ->
+            %{priority: 10, label: base_name(module) |> Inflex.pluralize()}
+
+          other ->
+            Enum.into(other, %{})
+        end
+
+      controller_route = base_name(module) |> Inflex.underscore() |> Inflex.pluralize()
+
+      controller_route =
+        case Module.get_attribute(__MODULE__, :options) do
+          nil ->
+            controller_route
+
+          options ->
+            Keyword.get(options, :controller_route, controller_route)
+        end
+
+      plugs =
+        case Module.get_attribute(__MODULE__, :controller_plugs) do
+          nil -> []
+          list -> Enum.reverse(list)
+        end
+
+      sidebars =
+        case Module.get_attribute(__MODULE__, :sidebars) do
+          nil -> []
+          list -> Enum.reverse(list)
+        end
+
+      scopes =
+        case Module.get_attribute(__MODULE__, :scopes) do
+          nil -> []
+          list -> Enum.reverse(list)
+        end
+
+      controller_filters =
+        (Module.get_attribute(__MODULE__, :controller_filters) || [])
+        |> ExAdmin.Helpers.group_reduce_by_reverse()
+
+      action_labels =
+        ExAdmin.Register.get_action_labels(Module.get_attribute(__MODULE__, :actions))
+
       actions =
-        ExAdmin.Register.get_action_items(Module.get_attribute(__MODULE__, :actions), @all_options)
-        |> ExAdmin.Register.custom_action_actions(Module.get_attribute(__MODULE__, :member_actions), module, :member_actions)
-        |> ExAdmin.Register.custom_action_actions(Module.get_attribute(__MODULE__, :collection_actions), module, :collection_actions)
+        ExAdmin.Register.get_action_items(
+          Module.get_attribute(__MODULE__, :actions),
+          @all_options
+        )
+        |> ExAdmin.Register.custom_action_actions(
+          Module.get_attribute(__MODULE__, :member_actions),
+          module,
+          :member_actions
+        )
+        |> ExAdmin.Register.custom_action_actions(
+          Module.get_attribute(__MODULE__, :collection_actions),
+          module,
+          :collection_actions
+        )
 
       defstruct controller: @controller,
                 controller_methods: Module.get_attribute(__MODULE__, :controller_methods),
@@ -211,6 +245,7 @@ defmodule ExAdmin.Register do
         |> Map.get(:resource_model)
         |> ExAdmin.Query.run_query(repo, defn, action, id, @query)
       end
+
       def run_query_counts(repo, defn, action, id \\ nil) do
         %__MODULE__{}
         |> Map.get(:resource_model)
@@ -221,8 +256,10 @@ defmodule ExAdmin.Register do
         cond do
           function_exported?(@module, :admin_search_query, 1) ->
             apply(@module, :admin_search_query, [keywords])
+
           function_exported?(__MODULE__, :admin_search_query, 1) ->
-              apply(__MODULE__, :admin_search_query, [keywords])
+            apply(__MODULE__, :admin_search_query, [keywords])
+
           true ->
             suggest_admin_search_query(keywords)
         end
@@ -230,14 +267,17 @@ defmodule ExAdmin.Register do
 
       defp suggest_admin_search_query(keywords) do
         field = @name_column
-        query = from r in @module, order_by: ^field
+        query = from(r in @module, order_by: ^field)
+
         case keywords do
           nil ->
             query
+
           "" ->
             query
+
           keywords ->
-            from r in query, where: ilike(field(r, ^field), ^("%#{keywords}%"))
+            from(r in query, where: ilike(field(r, ^field), ^"%#{keywords}%"))
         end
       end
 
@@ -253,30 +293,37 @@ defmodule ExAdmin.Register do
 
   @doc false
   def get_action_labels(nil), do: []
-  def get_action_labels([opts|_]) when is_list(opts) do
+
+  def get_action_labels([opts | _]) when is_list(opts) do
     opts[:labels] || []
   end
+
   def get_action_labels(_), do: []
 
   @doc false
   def get_action_items(nil, _), do: []
+
   def get_action_items(actions, all_options) when is_list(actions) do
     {atoms, keywords} =
       List.flatten(actions)
       |> Enum.reduce({[], []}, fn
-        atom, {acca, acck}  when is_atom(atom) -> {[atom | acca], acck}
-        kw, {acca, acck}  -> {acca, [kw | acck]}
+        atom, {acca, acck} when is_atom(atom) -> {[atom | acca], acck}
+        kw, {acca, acck} -> {acca, [kw | acck]}
       end)
-    atoms = Enum.reverse atoms
-    keywords = Enum.reverse Keyword.drop(keywords, [:labels])
+
+    atoms = Enum.reverse(atoms)
+    keywords = Enum.reverse(Keyword.drop(keywords, [:labels]))
 
     cond do
       keywords[:only] && keywords[:except] ->
         raise "options :only and :except cannot be used together"
+
       keywords[:only] ->
         Keyword.delete(keywords, :only) ++ keywords[:only]
+
       keywords[:except] ->
-        Keyword.delete(keywords, :except) ++ all_options -- keywords[:except]
+        Keyword.delete(keywords, :except) ++ (all_options -- keywords[:except])
+
       true ->
         keywords ++ atoms
     end
@@ -285,28 +332,34 @@ defmodule ExAdmin.Register do
   def custom_action_actions(actions, custom_actions, module, type) do
     custom_actions
     |> Enum.reduce(actions, fn {name, opts}, acc ->
-      fun = quote do
-        name = unquote(name)
-        human_name = case unquote(opts)[:opts][:label] do
-          nil -> humanize name
-          label -> label
-        end
-        module = unquote(module)
-        type = unquote(type)
-        if type == :member_actions do
-          fn id ->
-            resource = struct(module.__struct__, id: id)
-            url = ExAdmin.Utils.admin_resource_path(resource, :member, [name])
-            ExAdmin.ViewHelpers.action_item_link human_name, href: url, "data-method": :put
+      fun =
+        quote do
+          name = unquote(name)
+
+          human_name =
+            case unquote(opts)[:opts][:label] do
+              nil -> humanize(name)
+              label -> label
+            end
+
+          module = unquote(module)
+          type = unquote(type)
+
+          if type == :member_actions do
+            fn id ->
+              resource = struct(module.__struct__, id: id)
+              url = ExAdmin.Utils.admin_resource_path(resource, :member, [name])
+              ExAdmin.ViewHelpers.action_item_link(human_name, href: url, "data-method": :put)
+            end
+          else
+            fn id ->
+              resource = module
+              url = ExAdmin.Utils.admin_resource_path(resource, :collection, [name])
+              ExAdmin.ViewHelpers.action_item_link(human_name, href: url)
+            end
           end
-        else
-          fn id ->
-            resource = module
-            url = ExAdmin.Utils.admin_resource_path(resource, :collection, [name])
-            ExAdmin.ViewHelpers.action_item_link human_name, href: url
-          end
         end
-      end
+
       action = if type == :member_actions, do: :show, else: :index
       [{action, fun} | acc]
     end)
@@ -326,7 +379,7 @@ defmodule ExAdmin.Register do
   * `plug` - Add a plug to the controller
 
   """
-  defmacro controller([do: block]) do
+  defmacro controller(do: block) do
     quote do
       Module.register_attribute(__MODULE__, :controller_methods, accumulate: false, persist: true)
       Module.register_attribute(__MODULE__, :controller_filters, accumulate: true, persist: true)
@@ -335,9 +388,10 @@ defmodule ExAdmin.Register do
       unquote(block)
     end
   end
+
   defmacro controller(controller_mod) do
     quote do
-      Module.put_attribute __MODULE__, :controller, unquote(controller_mod)
+      Module.put_attribute(__MODULE__, :controller, unquote(controller_mod))
     end
   end
 
@@ -358,7 +412,7 @@ defmodule ExAdmin.Register do
 
 
   """
-  defmacro define_method(name, [do: block]) do
+  defmacro define_method(name, do: block) do
     quote do
       methods = Module.get_attribute(__MODULE__, :controller_methods)
 
@@ -400,7 +454,11 @@ defmodule ExAdmin.Register do
   """
   defmacro before_filter(name, opts \\ []) do
     quote location: :keep do
-      Module.put_attribute(__MODULE__, :controller_filters, {:before_filter, {unquote(name), unquote(opts)}})
+      Module.put_attribute(
+        __MODULE__,
+        :controller_filters,
+        {:before_filter, {unquote(name), unquote(opts)}}
+      )
     end
   end
 
@@ -432,7 +490,11 @@ defmodule ExAdmin.Register do
   """
   defmacro after_filter(name, opts \\ []) do
     quote location: :keep do
-      Module.put_attribute(__MODULE__, :controller_filters, {:after_filter, {unquote(name), unquote(opts)}})
+      Module.put_attribute(
+        __MODULE__,
+        :controller_filters,
+        {:after_filter, {unquote(name), unquote(opts)}}
+      )
     end
   end
 
@@ -501,52 +563,57 @@ defmodule ExAdmin.Register do
 
   See the default dashboard page for an example.
   """
-  defmacro register_page(name, [do: block]) do
+  defmacro register_page(name, do: block) do
     quote location: :keep do
       import ExAdmin.Register, except: [column: 1]
       use ExAdmin.Page
 
-      Module.register_attribute __MODULE__, :query, accumulate: false, persist: true
-      Module.register_attribute __MODULE__, :index_filters, accumulate: true, persist: true
-      Module.register_attribute __MODULE__, :batch_actions, accumulate: true, persist: true
-      Module.register_attribute __MODULE__, :selectable_column, accumulate: false, persist: true
-      Module.register_attribute __MODULE__, :form_items, accumulate: true, persist: true
+      Module.register_attribute(__MODULE__, :query, accumulate: false, persist: true)
+      Module.register_attribute(__MODULE__, :index_filters, accumulate: true, persist: true)
+      Module.register_attribute(__MODULE__, :batch_actions, accumulate: true, persist: true)
+      Module.register_attribute(__MODULE__, :selectable_column, accumulate: false, persist: true)
+      Module.register_attribute(__MODULE__, :form_items, accumulate: true, persist: true)
       Module.register_attribute(__MODULE__, :sidebars, accumulate: true, persist: true)
-      Module.put_attribute __MODULE__, :controller_plugs, nil
+      Module.put_attribute(__MODULE__, :controller_plugs, nil)
       page_name = unquote(name)
       unquote(block)
 
       # query_opts = Module.get_attribute(__MODULE__, :query)
-      menu_opts = case Module.get_attribute(__MODULE__, :menu) do
-        :none ->
-          %{none: true}
-        nil ->
-          %{label: page_name, priority: 99}
-        other ->
-          Enum.into other, %{}
-      end
+      menu_opts =
+        case Module.get_attribute(__MODULE__, :menu) do
+          :none ->
+            %{none: true}
+
+          nil ->
+            %{label: page_name, priority: 99}
+
+          other ->
+            Enum.into(other, %{})
+        end
 
       controller_methods = Module.get_attribute(__MODULE__, :controller_methods)
       page_name = Kernel.to_string(page_name)
 
-      plugs = case Module.get_attribute(__MODULE__, :controller_plugs) do
-        nil -> []
-        list -> Enum.reverse list
-      end
+      plugs =
+        case Module.get_attribute(__MODULE__, :controller_plugs) do
+          nil -> []
+          list -> Enum.reverse(list)
+        end
 
-      sidebars = case Module.get_attribute(__MODULE__, :sidebars) do
-        nil -> []
-        list -> Enum.reverse list
-      end
+      sidebars =
+        case Module.get_attribute(__MODULE__, :sidebars) do
+          nil -> []
+          list -> Enum.reverse(list)
+        end
 
-      defstruct controller: Module.concat(Application.get_env(:ex_admin, :project), AdminController),
+      defstruct controller:
+                  Module.concat(Application.get_env(:ex_admin, :project), AdminController),
                 controller_methods: Module.get_attribute(__MODULE__, :controller_methods),
                 type: :page,
                 page_name: page_name,
                 title_actions: &ExAdmin.default_page_title_actions/2,
-                controller_route: (page_name |> Inflex.parameterize("_")),
+                controller_route: page_name |> Inflex.parameterize("_"),
                 menu: menu_opts,
-
                 member_actions: Module.get_attribute(__MODULE__, :member_actions),
                 collection_actions: Module.get_attribute(__MODULE__, :collection_actions),
                 controller_filters: Module.get_attribute(__MODULE__, :controller_filters),
@@ -592,18 +659,23 @@ defmodule ExAdmin.Register do
         Phoenix.View.render MyApp.AdminView, "sidebar_warning.html", []
       end
   """
-  defmacro sidebar(name, opts \\ [], [do: block]) do
-    contents = quote do
-      unquote(block)
-    end
-    quote location: :keep, bind_quoted: [name: escape(name), opts: escape(opts), contents: escape(contents)] do
-      fun_name = "side_bar_#{name}" |> String.replace(" ", "_") |> String.to_atom
+  defmacro sidebar(name, opts \\ [], do: block) do
+    contents =
+      quote do
+        unquote(block)
+      end
+
+    quote location: :keep,
+          bind_quoted: [name: escape(name), opts: escape(opts), contents: escape(contents)] do
+      fun_name = "side_bar_#{name}" |> String.replace(" ", "_") |> String.to_atom()
+
       def unquote(fun_name)(var!(conn), var!(resource)) do
         _ = var!(conn)
         _ = var!(resource)
         unquote(contents)
       end
-      Module.put_attribute __MODULE__, :sidebars, {name, opts, {__MODULE__, fun_name}}
+
+      Module.put_attribute(__MODULE__, :sidebars, {name, opts, {__MODULE__, fun_name}})
     end
   end
 
@@ -632,31 +704,39 @@ defmodule ExAdmin.Register do
 
   """
   defmacro scope(name) do
-    quote location: :keep  do
-      Module.put_attribute __MODULE__, :scopes, {unquote(name), []}
+    quote location: :keep do
+      Module.put_attribute(__MODULE__, :scopes, {unquote(name), []})
     end
   end
+
   defmacro scope(name, opts_or_fun) do
-    quote location: :keep  do
+    quote location: :keep do
       opts_or_fun = unquote(opts_or_fun)
+
       if is_function(opts_or_fun) do
-        scope unquote(name), [], unquote(opts_or_fun)
+        scope(unquote(name), [], unquote(opts_or_fun))
       else
-        Module.put_attribute __MODULE__, :scopes, {unquote(name), opts_or_fun}
+        Module.put_attribute(__MODULE__, :scopes, {unquote(name), opts_or_fun})
       end
     end
   end
+
   defmacro scope(name, opts, fun) do
-    contents = quote do
-      unquote(fun)
-    end
-    quote location: :keep, bind_quoted: [name: escape(name), opts: escape(opts), contents: escape(contents)] do
-      fun_name = "scope_#{name}" |> String.replace(" ", "_") |> String.to_atom
+    contents =
+      quote do
+        unquote(fun)
+      end
+
+    quote location: :keep,
+          bind_quoted: [name: escape(name), opts: escape(opts), contents: escape(contents)] do
+      fun_name = "scope_#{name}" |> String.replace(" ", "_") |> String.to_atom()
+
       def unquote(fun_name)(var!(resource)) do
         unquote(contents).(var!(resource))
       end
+
       opts = [{:fun, {__MODULE__, fun_name}} | opts]
-      Module.put_attribute __MODULE__, :scopes, {name, opts}
+      Module.put_attribute(__MODULE__, :scopes, {name, opts})
     end
   end
 
@@ -669,7 +749,7 @@ defmodule ExAdmin.Register do
   """
   defmacro options(opts) do
     quote do
-      Module.put_attribute __MODULE__, :options, unquote(opts)
+      Module.put_attribute(__MODULE__, :options, unquote(opts))
     end
   end
 
@@ -698,7 +778,7 @@ defmodule ExAdmin.Register do
   """
   defmacro menu(opts) do
     quote do
-      Module.put_attribute __MODULE__, :menu, unquote(opts)
+      Module.put_attribute(__MODULE__, :menu, unquote(opts))
     end
   end
 
@@ -756,7 +836,7 @@ defmodule ExAdmin.Register do
   """
   defmacro query(do: qry) do
     quote do
-      Module.put_attribute __MODULE__, :query, unquote(qry)
+      Module.put_attribute(__MODULE__, :query, unquote(qry))
     end
   end
 
@@ -776,11 +856,10 @@ defmodule ExAdmin.Register do
   """
   defmacro column(name, opts \\ [], fun \\ nil) do
     quote do
-      opts = ExAdmin.DslUtils.fun_to_opts unquote(opts), unquote(fun)
-      var!(columns, ExAdmin.Show) = [{unquote(name), (opts)} | var!(columns, ExAdmin.Show)]
+      opts = ExAdmin.DslUtils.fun_to_opts(unquote(opts), unquote(fun))
+      var!(columns, ExAdmin.Show) = [{unquote(name), opts} | var!(columns, ExAdmin.Show)]
     end
   end
-
 
   @doc """
   Drag&drop control for sortable tables.
@@ -790,9 +869,9 @@ defmodule ExAdmin.Register do
   """
   defmacro sort_handle_column(fa_icon_name \\ "bars") do
     quote do
-      column "", [], fn(_) ->
-        i "", class: "fa fa-#{unquote(fa_icon_name)} handle", "aria-hidden": "true"
-      end
+      column("", [], fn _ ->
+        i("", class: "fa fa-#{unquote(fa_icon_name)} handle", "aria-hidden": "true")
+      end)
     end
   end
 
@@ -803,7 +882,7 @@ defmodule ExAdmin.Register do
   """
   defmacro row(name, opts \\ [], fun \\ nil) do
     quote do
-      opts = ExAdmin.DslUtils.fun_to_opts unquote(opts), unquote(fun)
+      opts = ExAdmin.DslUtils.fun_to_opts(unquote(opts), unquote(fun))
       var!(rows, ExAdmin.Show) = [{unquote(name), opts} | var!(rows, ExAdmin.Show)]
     end
   end
@@ -813,8 +892,8 @@ defmodule ExAdmin.Register do
   """
   defmacro link_to(name, path, opts \\ quote(do: [])) do
     quote do
-      opts = Keyword.merge [to: unquote(path)], unquote(opts)
-      Phoenix.HTML.Link.link "#{unquote(name)}", opts
+      opts = Keyword.merge([to: unquote(path)], unquote(opts))
+      Phoenix.HTML.Link.link("#{unquote(name)}", opts)
     end
   end
 
@@ -822,10 +901,11 @@ defmodule ExAdmin.Register do
   # Note: `actions/2` has been depreciated. Please use `action_items/1` instead
   defmacro actions(:all, opts \\ quote(do: [])) do
     require Logger
-    Logger.warn "actions/2 has been depreciated. Please use action_items/1 instead"
+    Logger.warn("actions/2 has been depreciated. Please use action_items/1 instead")
+
     quote do
       opts = unquote(opts)
-      Module.put_attribute __MODULE__, :actions, unquote(opts)
+      Module.put_attribute(__MODULE__, :actions, unquote(opts))
     end
   end
 
@@ -848,10 +928,9 @@ defmodule ExAdmin.Register do
   defmacro action_items(opts \\ nil) do
     quote do
       opts = unquote(opts)
-      Module.put_attribute __MODULE__, :actions, unquote(opts)
+      Module.put_attribute(__MODULE__, :actions, unquote(opts))
     end
   end
-
 
   @doc """
   Add an id based action and show page link.
@@ -891,7 +970,11 @@ defmodule ExAdmin.Register do
   """
   defmacro member_action(name, fun, opts \\ []) do
     quote do
-      Module.put_attribute __MODULE__, :member_actions, {unquote(name), [fun: unquote(fun), opts: unquote(opts)]}
+      Module.put_attribute(
+        __MODULE__,
+        :member_actions,
+        {unquote(name), [fun: unquote(fun), opts: unquote(opts)]}
+      )
     end
   end
 
@@ -924,7 +1007,11 @@ defmodule ExAdmin.Register do
   """
   defmacro collection_action(name, fun, opts \\ []) do
     quote do
-      Module.put_attribute __MODULE__, :collection_actions, {unquote(name), [fun: unquote(fun), opts: unquote(opts)]}
+      Module.put_attribute(
+        __MODULE__,
+        :collection_actions,
+        {unquote(name), [fun: unquote(fun), opts: unquote(opts)]}
+      )
     end
   end
 
@@ -936,8 +1023,8 @@ defmodule ExAdmin.Register do
 
   defmacro clear_action_items! do
     quote do
-      Module.delete_attribute __MODULE__, :actions
-      Module.register_attribute __MODULE__, :actions, accumulate: true, persist: true
+      Module.delete_attribute(__MODULE__, :actions)
+      Module.register_attribute(__MODULE__, :actions, accumulate: true, persist: true)
     end
   end
 
@@ -964,8 +1051,9 @@ defmodule ExAdmin.Register do
   """
   defmacro action_item(opts, fun) do
     fun = Macro.escape(fun, unquote: true)
+
     quote do
-      Module.put_attribute __MODULE__, :actions, {unquote(opts), unquote(fun)}
+      Module.put_attribute(__MODULE__, :actions, {unquote(opts), unquote(fun)})
     end
   end
 
@@ -992,17 +1080,19 @@ defmodule ExAdmin.Register do
   """
   defmacro filter(disable) when disable in [nil, false] do
     quote do
-      Module.put_attribute __MODULE__, :index_filters, false
+      Module.put_attribute(__MODULE__, :index_filters, false)
     end
   end
+
   defmacro filter(fields) when is_list(fields) do
     quote do
-      Module.put_attribute __MODULE__, :index_filters, unquote(fields)
+      Module.put_attribute(__MODULE__, :index_filters, unquote(fields))
     end
   end
+
   defmacro filter(field, opts \\ quote(do: [])) do
     quote do
-      Module.put_attribute __MODULE__, :index_filters, {unquote(field), unquote(opts)}
+      Module.put_attribute(__MODULE__, :index_filters, {unquote(field), unquote(opts)})
     end
   end
 
@@ -1015,27 +1105,29 @@ defmodule ExAdmin.Register do
   """
   defmacro batch_actions(false) do
     quote do
-      Module.put_attribute __MODULE__, :batch_actions, false
+      Module.put_attribute(__MODULE__, :batch_actions, false)
     end
   end
 
   @doc false
   def build_query_association(module, field) do
     case module.__schema__(:association, field) do
-      %Ecto.Association.BelongsTo{cardinality: :one} -> field
+      %Ecto.Association.BelongsTo{cardinality: :one} ->
+        field
+
       %Ecto.Association.Has{cardinality: :many} ->
-        check_preload field, :preload_many
+        check_preload(field, :preload_many)
+
       _ ->
         nil
     end
   end
 
   defp check_preload(field, key) do
-    if Application.get_env :ex_admin, key, true do
+    if Application.get_env(:ex_admin, key, true) do
       field
     else
       nil
     end
   end
-
 end

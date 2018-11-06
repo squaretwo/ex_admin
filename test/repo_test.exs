@@ -6,12 +6,15 @@ defmodule ExAdmin.RepoTest do
   defmodule Schema do
     defstruct id: 0, name: nil
   end
+
   defmodule Schema2 do
     defstruct id: 0, field: nil
   end
+
   defmodule Cs1 do
     defstruct model: nil, changes: %{}
   end
+
   defmodule Cs2 do
     defstruct data: nil, changes: %{}
   end
@@ -29,8 +32,11 @@ defmodule ExAdmin.RepoTest do
   end
 
   test "set_dependents ecto2" do
-    expected = %ExAdmin.RepoTest.Cs2{changes: %{name: "test"},
-      data: %ExAdmin.RepoTest.Schema{id: 0, name: nil}}
+    expected = %ExAdmin.RepoTest.Cs2{
+      changes: %{name: "test"},
+      data: %ExAdmin.RepoTest.Schema{id: 0, name: nil}
+    }
+
     list = [{"fields", %Cs2{changes: %{field: "f1"}, data: %Schema2{}}}]
     cs = %Cs2{data: %Schema{}, changes: %{name: "test"}}
     cs = Repo.set_dependents(cs, list)
@@ -38,8 +44,11 @@ defmodule ExAdmin.RepoTest do
   end
 
   test "set_dependents ecto1" do
-    expected = %ExAdmin.RepoTest.Cs1{changes: %{name: "test"},
-      model: %ExAdmin.RepoTest.Schema{id: 0, name: nil}}
+    expected = %ExAdmin.RepoTest.Cs1{
+      changes: %{name: "test"},
+      model: %ExAdmin.RepoTest.Schema{id: 0, name: nil}
+    }
+
     list = [{"fields", %Cs1{changes: %{field: "f1"}, model: %Schema2{}}}]
     cs = %Cs1{model: %Schema{}, changes: %{name: "test"}}
     cs = Repo.set_dependents(cs, list)
@@ -64,8 +73,9 @@ defmodule ExAdmin.RepoTest do
 
   test "param_stringify_keys" do
     assert Repo.param_stringify_keys(%{one: 1, two: "t"}) == %{"one" => 1, "two" => "t"}
-    assert Repo.param_stringify_keys(%{"one" =>  1, "two" => "t"}) == %{"one" => 1, "two" => "t"}
+    assert Repo.param_stringify_keys(%{"one" => 1, "two" => "t"}) == %{"one" => 1, "two" => "t"}
+
     assert Repo.param_stringify_keys(%{one: 1, two: %{a: 7, b: %{c: 0, d: "tt"}}}) ==
-      %{"one" => 1, "two" =>  %{"a" =>  7, "b" => %{"c" =>  0, "d" => "tt"}}}
+             %{"one" => 1, "two" => %{"a" => 7, "b" => %{"c" => 0, "d" => "tt"}}}
   end
 end

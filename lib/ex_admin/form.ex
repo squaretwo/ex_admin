@@ -21,6 +21,7 @@ defmodule ExAdmin.Form do
               input contact, :first_name
               input contact, :last_name
               input contact, :email
+              input contact, :register_date, type: Date
               input contact, :category, collection: MyProject.Category.all
             end
 
@@ -63,6 +64,9 @@ defmodule ExAdmin.Form do
   ### Specifying type of control
 
       input user, :password, type: :password
+
+      # If you use :naive_datetime or :utc_datetime in your schema instead of Ecto.DateTime
+      input user, :register_datetime, type: DateTime
 
   ### Array field support
 
@@ -355,10 +359,10 @@ defmodule ExAdmin.Form do
       For example `input post :user, fields: [:first_name, :last_name]`
       would render a control like:
 
-          `<select>`
-            `<option id="1">José Valim</option>`
-            `<option id="2">Chris McCord</option>
-          `</select>`
+          <select>
+            <option id="1">José Valim</option>
+            <option id="2">Chris McCord</option>
+          </select>
 
     * `:prompt` - Sets a HTML placeholder
 
@@ -645,17 +649,20 @@ defmodule ExAdmin.Form do
         {"error ", []}
       end
 
-    {theme_module(Form).theme_wrap_item(
-       field_type(resource, field_name),
-       ext_name,
-       label,
-       hidden,
-       ajax,
-       error,
-       contents,
-       as,
-       required
-     ), ext_name}
+    {
+      theme_module(Form).theme_wrap_item(
+        field_type(resource, field_name),
+        ext_name,
+        label,
+        hidden,
+        ajax,
+        error,
+        contents,
+        as,
+        required
+      ),
+      ext_name
+    }
   end
 
   def wrap_item_type(type, label, ext_name, contents, error, required) do
@@ -673,7 +680,7 @@ defmodule ExAdmin.Form do
     html_opts = item[:opts][:html_opts] || []
     html_opts = Keyword.merge([name: "#{model_name}[#{field_name}]"], html_opts)
 
-    select("##{ext_name}_id.form-control", html_opts) do
+    select "##{ext_name}_id.form-control", html_opts do
       handle_prompt(field_name, item)
 
       for item <- collection do
@@ -775,7 +782,8 @@ defmodule ExAdmin.Form do
       markup do
         html
 
-        theme_module(conn, Form).theme_button("Add New #{human_label}",
+        theme_module(conn, Form).theme_button(
+          "Add New #{human_label}",
           href: "#",
           onclick: onclick,
           type: ".btn-primary"
@@ -894,9 +902,9 @@ defmodule ExAdmin.Form do
 
             script =
               "$('##{control_id}').show();\n" <>
-                extra <>
-                "console.log('show #{control_id}');\n" <>
-                get_cmd <> "/?field_name=#{update}#{param_str}&format=js');\n"
+              extra <>
+              "console.log('show #{control_id}');\n" <>
+              get_cmd <> "/?field_name=#{update}#{param_str}&format=js');\n"
 
             {:change, %{id: id <> "_id", script: script}}
           end
@@ -990,6 +998,12 @@ defmodule ExAdmin.Form do
               fields = fun.(res) |> Enum.reverse()
               ext_name = "#{model_name}_#{field_field_name}_#{inx}"
 
+              res =
+                cond do
+                  is_tuple(res) -> elem(res, 1)
+                  true -> res
+                end
+
               {new_inx, html} =
                 build_has_many_fieldset(
                   conn,
@@ -1047,7 +1061,8 @@ defmodule ExAdmin.Form do
           theme_module(conn, Form).has_many_insert_item(contents, new_record_name_var)
         )
 
-      theme_module(conn, Form).theme_button("Add New #{human_label}",
+      theme_module(conn, Form).theme_button(
+        "Add New #{human_label}",
         href: "#",
         onclick: onclick,
         type: ".btn-primary"
@@ -1070,7 +1085,7 @@ defmodule ExAdmin.Form do
     collection = if is_function(collection), do: collection.(conn, resource), else: collection
     errors = get_errors(errors, name)
     name_ids = "#{Atom.to_string(name) |> Inflex.singularize()}_ids"
-    assoc_ids = Enum.map(get_resource_field2(resource, name), &Schema.get_id(&1))
+
     name_str = "#{model_name}[#{name_ids}][]"
     required = get_required(name, opts)
 
@@ -1079,22 +1094,12 @@ defmodule ExAdmin.Form do
         Xain.input(name: name_str, type: "hidden", value: "")
 
         if opts[:as] == :check_boxes do
-          theme_module(conn, Form).wrap_collection_check_boxes(fn ->
-            for opt <- collection do
-              opt_id = Schema.get_id(opt)
-              name_str = "#{model_name}[#{name_ids}][#{opt_id}]"
-              selected = opt_id in assoc_ids
-              display_name = display_name(opt)
-
-              theme_module(conn, Form).collection_check_box(
-                display_name,
-                name_str,
-                opt_id,
-                selected
-              )
-            end
-          end)
+          build_checkboxes(conn, name, collection, opts, resource, model_name, errors, name_ids)
         else
+          assoc_ids =
+            get_resource_field2(resource, name)
+            |> Enum.map(&Schema.get_id(&1))
+
           select id: "#{model_name}_#{name_ids}",
                  class: "form-control",
                  multiple: "multiple",
@@ -1113,12 +1118,72 @@ defmodule ExAdmin.Form do
     end)
   end
 
+  defp build_checkboxes(conn, name, collection, opts, resource, model_name, errors, name_ids) do
+    theme_module(conn, Form).wrap_collection_check_boxes(fn ->
+      for opt <- collection do
+        opt_id = Schema.get_id(opt)
+        name_str = "#{model_name}[#{name_ids}][#{opt_id}]"
+
+        selected =
+          cond do
+            errors != nil ->
+              # error and selected in params
+              request_params = Map.get(conn, :body_params, nil)
+
+              ids =
+                Map.get(request_params, model_name, %{})
+                |> Map.get(name_ids, [])
+                |> ExAdmin.EctoFormMappers.checkboxes_to_ids()
+
+              Integer.to_string(opt_id) in ids
+
+            true ->
+              assoc_ids = Enum.map(get_resource_field2(resource, name), &Schema.get_id(&1))
+              # select and no error
+              opt_id in assoc_ids
+          end
+
+        display_name = display_name(opt)
+        theme_module(conn, Form).collection_check_box(display_name, name_str, opt_id, selected)
+      end
+    end)
+  end
+
+  @doc """
+  Setups the default collection on a inputs dsl request and then calls
+  build_item again with the collection added
+  """
+  def build_item(
+        conn,
+        %{type: :inputs, name: name, opts: %{as: type}} = options,
+        resource,
+        model_name,
+        errors
+      )
+      when is_atom(name) do
+    # Get the model from the atom name
+    mod =
+      name
+      |> Atom.to_string()
+      |> String.capitalize()
+      |> Inflex.singularize()
+      |> String.to_atom()
+
+    module =
+      Application.get_env(:ex_admin, :module)
+      |> Module.concat(mod)
+
+    opts = put_in(options, [:opts, :collection], apply(module, :all, []))
+
+    # call the build item with the default collection
+    build_item(conn, opts, resource, model_name, errors)
+  end
+
   @doc """
   Handle building the items for an input block.
 
   This is where each of the fields will be build
   """
-
   def build_item(conn, %{type: :inputs, name: _field_name} = item, resource, model_name, errors) do
     opts = Map.get(item, :opts, [])
     Adminlog.debug("build_item 10: #{inspect(_field_name)}")
@@ -1133,6 +1198,33 @@ defmodule ExAdmin.Form do
       end)
     end)
   end
+
+  defp build_checkboxes(conn, name, collection, opts, resource, model_name, errors, name_ids) do
+    theme_module(conn, Form).wrap_collection_check_boxes fn ->
+      for opt <- collection do
+        opt_id = Schema.get_id(opt)
+        name_str = "#{model_name}[#{name_ids}][#{opt_id}]"
+        selected = cond do
+          errors != nil ->
+            # error and selected in params
+            request_params = Map.get(conn, :body_params, nil)
+            ids = Map.get(request_params, model_name, %{}) |>
+              Map.get(name_ids, []) |>
+              ExAdmin.EctoFormMappers.checkboxes_to_ids
+            Integer.to_string(opt_id) in ids
+          true ->
+            assoc_ids = Enum.map(get_resource_field2(resource, name), &(Schema.get_id(&1)))
+            # select and no error
+            opt_id in assoc_ids
+        end
+        display_name = display_name opt
+        theme_module(conn, Form).collection_check_box display_name, name_str,
+                                                      opt_id, selected
+      end
+    end
+  end
+
+
 
   defp get_schema(item, field_name) do
     schema = item[:opts][:schema]
@@ -1286,6 +1378,27 @@ defmodule ExAdmin.Form do
     |> build_array_control_block
   end
 
+  def build_control({:embed, e}, resource, opts, model_name, field_name, ext_name) do
+    embed_content = Map.get(resource, field_name) || e.related.__struct__
+    embed_module = e.related
+
+    embed_module.__schema__(:fields)
+    |> Enum.map(&{&1, embed_module.__schema__(:type, &1)})
+    |> Enum.map(fn {field, type} ->
+      [
+        label(Atom.to_string(field)),
+        build_control(
+          type,
+          embed_content,
+          %{},
+          "#{model_name}[#{field_name}]",
+          field,
+          "#{ext_name}_#{field}"
+        )
+      ]
+    end)
+  end
+
   def build_control(type, resource, opts, model_name, field_name, ext_name) do
     {field_type, value} =
       cond do
@@ -1316,9 +1429,9 @@ defmodule ExAdmin.Form do
         Enum.map(options, fn opt ->
           Xain.option(opt, value: opt, selected: "selected", style: "color: #333")
         end) ++
-          Enum.map(collection, fn opt ->
-            Xain.option(opt, value: opt)
-          end)
+        Enum.map(collection, fn opt ->
+          Xain.option(opt, value: opt)
+        end)
       end
 
     {select, script}
@@ -1381,7 +1494,7 @@ defmodule ExAdmin.Form do
 
   def date_select(form, field_name, opts \\ []) do
     value = Keyword.get(opts, :value, value_from(form, field_name) || Keyword.get(opts, :default))
-    builder = Keyword.get(opts, :builder) || (&date_builder(&1, opts))
+    builder = Keyword.get(opts, :builder) || &date_builder(&1, opts)
     builder.(datetime_builder(form, field_name, date_value(value), nil, opts))
   end
 
@@ -1396,26 +1509,20 @@ defmodule ExAdmin.Form do
   end
 
   defp date_value(%{"year" => year, "month" => month, "day" => day}),
-    do: %{year: year, month: month, day: day}
+       do: %{year: year, month: month, day: day}
 
   defp date_value(%{year: year, month: month, day: day}),
-    do: %{year: year, month: month, day: day}
+       do: %{year: year, month: month, day: day}
 
-  defp date_value({{year, month, day}, _}),
-    do: %{year: year, month: month, day: day}
+  defp date_value({{year, month, day}, _}), do: %{year: year, month: month, day: day}
+  defp date_value({year, month, day}), do: %{year: year, month: month, day: day}
 
-  defp date_value({year, month, day}),
-    do: %{year: year, month: month, day: day}
-
-  defp date_value(nil),
-    do: %{year: nil, month: nil, day: nil}
-
-  defp date_value(other),
-    do: raise(ArgumentError, "unrecognized date #{inspect(other)}")
+  defp date_value(nil), do: %{year: nil, month: nil, day: nil}
+  defp date_value(other), do: raise(ArgumentError, "unrecognized date #{inspect(other)}")
 
   def time_select(form, field, opts \\ []) do
     value = Keyword.get(opts, :value, value_from(form, field) || Keyword.get(opts, :default))
-    builder = Keyword.get(opts, :builder) || (&time_builder(&1, opts))
+    builder = Keyword.get(opts, :builder) || &time_builder(&1, opts)
     builder.(datetime_builder(form, field, nil, time_value(value), opts))
   end
 
@@ -1426,35 +1533,41 @@ defmodule ExAdmin.Form do
       b.(:min, [])
 
       if Keyword.get(opts, :sec) do
-        span(".time-separator")
-        b.(:sec, [])
+        markup do
+          span(".time-separator")
+          b.(:sec, [])
+        end
+      end
+
+      if Keyword.get(opts, :usec) do
+        markup do
+          span(".time-separator")
+          b.(:usec, [])
+        end
       end
     end
   end
 
   defp time_value(%{"hour" => hour, "min" => min} = map),
-    do: %{hour: hour, min: min, sec: Map.get(map, "sec", 0)}
+       do: %{hour: hour, min: min, sec: Map.get(map, "sec", 0), usec: Map.get(map, "usec", 0)}
 
   defp time_value(%{hour: hour, min: min} = map),
-    do: %{hour: hour, min: min, sec: Map.get(map, :sec, 0)}
+       do: %{hour: hour, min: min, sec: Map.get(map, :sec, 0), usec: Map.get(map, :usec, 0)}
 
-  defp time_value({_, {hour, min, sec, _msec}}),
-    do: %{hour: hour, min: min, sec: sec}
+  defp time_value(%{hour: hour, minute: min} = map),
+       do: %{
+         hour: hour,
+         min: min,
+         sec: Map.get(map, :second, 0),
+         usec: elem(Map.get(map, :microsecond, {0, 0}), 0)
+       }
 
-  defp time_value({hour, min, sec, _mseg}),
-    do: %{hour: hour, min: min, sec: sec}
-
-  defp time_value({_, {hour, min, sec}}),
-    do: %{hour: hour, min: min, sec: sec}
-
-  defp time_value({hour, min, sec}),
-    do: %{hour: hour, min: min, sec: sec}
-
-  defp time_value(nil),
-    do: %{hour: nil, min: nil, sec: nil}
-
-  defp time_value(other),
-    do: raise(ArgumentError, "unrecognized time #{inspect(other)}")
+  defp time_value({_, {hour, min, sec, usec}}), do: %{hour: hour, min: min, sec: sec, usec: usec}
+  defp time_value({hour, min, sec, usec}), do: %{hour: hour, min: min, sec: sec, usec: usec}
+  defp time_value({_, {hour, min, sec}}), do: %{hour: hour, min: min, sec: sec, usec: nil}
+  defp time_value({hour, min, sec}), do: %{hour: hour, min: min, sec: sec, usec: nil}
+  defp time_value(nil), do: %{hour: nil, min: nil, sec: nil, usec: nil}
+  defp time_value(other), do: raise(ArgumentError, "unrecognized time #{inspect(other)}")
 
   @months [
     {"January", "1"},
@@ -1474,12 +1587,13 @@ defmodule ExAdmin.Form do
   map =
     &Enum.map(&1, fn i ->
       i = Integer.to_string(i)
-      {String.pad_leading(i, 2, "0"), i}
+      {String.rjust(i, 2, ?0), i}
     end)
 
   @days map.(1..31)
   @hours map.(0..23)
   @minsec map.(0..59)
+  @usec map.(0..999)
 
   defp datetime_builder(form, field, date, time, parent) do
     id = Keyword.get(parent, :id, id_from(form, field))
@@ -1513,23 +1627,26 @@ defmodule ExAdmin.Form do
       :sec, opts when time != nil ->
         {value, opts} = datetime_options(:sec, @minsec, id, name, parent, time, opts)
         build_select(:datetime, :sec, value, opts)
+
+      :usec, opts when time != nil ->
+        {value, opts} = datetime_options(:usec, @usec, id, name, parent, time, opts)
+        build_select(:datetime, :usec, value, opts)
     end
   end
 
-  defp build_select(_name, _type, value, opts) do
+  defp build_select(_name, type, value, opts) do
     value =
-      case value do
-        _start.._finish ->
-          Enum.map(value, fn x ->
-            val = Integer.to_string(x)
-            {val, val}
-          end)
-
-        _ ->
-          value
+      if Range.range?(value) do
+        Enum.map(value, fn x ->
+          val = Integer.to_string(x)
+          {val, val}
+        end)
+      else
+        value
       end
 
     select "", [{:class, "form-control date-time"} | opts] do
+      if opts[:prompt], do: handle_prompt(type, opts: %{prompt: opts[:prompt]})
       current_value = "#{opts[:value]}"
 
       Enum.map(value, fn {k, v} ->
@@ -1545,28 +1662,24 @@ defmodule ExAdmin.Form do
 
     {value, opts} = Keyword.pop(opts, :options, values)
 
-    {value,
-     opts
-     |> Keyword.put_new(:id, id <> "_" <> suff)
-     |> Keyword.put_new(:name, name <> "[" <> suff <> "]")
-     |> Keyword.put_new(:value, Map.get(datetime, type))}
+    {
+      value,
+      opts
+      |> Keyword.put_new(:id, id <> "_" <> suff)
+      |> Keyword.put_new(:name, name <> "[" <> suff <> "]")
+      |> Keyword.put_new(:value, Map.get(datetime, type))
+    }
   end
 
   defp value_from(%{model: resource}, field_name) do
     Map.get(resource, field_name, "")
   end
 
-  defp id_from(%{id: id}, field),
-    do: "#{id}_#{field}"
+  defp id_from(%{id: id}, field), do: "#{id}_#{field}"
+  defp id_from(name, field) when is_atom(name), do: "#{name}_#{field}"
 
-  defp id_from(name, field) when is_atom(name),
-    do: "#{name}_#{field}"
-
-  defp name_from(%{name: name}, field),
-    do: "#{name}[#{field}]"
-
-  defp name_from(name, field) when is_atom(name),
-    do: "#{name}[#{field}]"
+  defp name_from(%{name: name}, field), do: "#{name}[#{field}]"
+  defp name_from(name, field) when is_atom(name), do: "#{name}[#{field}]"
 
   @doc false
   def build_has_many_fieldset(
@@ -1636,9 +1749,9 @@ defmodule ExAdmin.Form do
     |> get_errors(field_name)
     |> Enum.reduce("", fn error, acc ->
       acc <>
-        """
-        <p class="inline-errors">#{error_messages(error)}</p>
-        """
+      """
+      <p class="inline-errors">#{error_messages(error)}</p>
+      """
     end)
   end
 
@@ -1695,9 +1808,11 @@ defmodule ExAdmin.Form do
   defp map_array_errors(nil, _, _), do: nil
 
   defp map_array_errors(errors, field_name, inx) do
-    (errors || [])
-    |> Enum.filter(fn {k, {_err, opts}} -> k == field_name and opts[:index] == inx end)
-    |> Enum.map(fn {_k, {err, opts}} -> {opts[:field], err} end)
+    Enum.filter_map(
+      errors || [],
+      fn {k, {_err, opts}} -> k == field_name and opts[:index] == inx end,
+      fn {_k, {err, opts}} -> {opts[:field], err} end
+    )
   end
 
   @doc false
@@ -1739,13 +1854,13 @@ defmodule ExAdmin.Form do
   def error_messages(other), do: "error: #{inspect(other)}"
 
   def global_script,
-    do: """
-    $(function() {
-      $(document).on('click', '.remove_has_many_maps', function() {
-        console.log('remove has many maps');
-        $(this).closest(".has_many_fields").remove();
-        return false;
+      do: """
+      $(function() {
+        $(document).on('click', '.remove_has_many_maps', function() {
+          console.log('remove has many maps');
+          $(this).closest(".has_many_fields").remove();
+          return false;
+        });
       });
-    });
-    """
+      """
 end
